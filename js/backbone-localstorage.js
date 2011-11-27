@@ -38,7 +38,13 @@ _.extend(Store.prototype, {
 
   // Update a model by replacing its copy in `this.data`.
   update: function(model) {
-    this.data[model.id] = model;
+    if (_.isArray(model)) {
+      for (var i = 0, l = model.length; i < l; i++) {
+        this.data[model[i].id] = model[i];
+      }
+    } else {
+      this.data[model.id] = model;
+    }
     this.save();
     return model;
   },

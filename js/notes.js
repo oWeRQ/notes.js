@@ -1,3 +1,7 @@
+function time() {
+	return Math.round(new Date().getTime() / 1000);
+}
+
 window.Note = Backbone.Model.extend({
 	defaults: {
 		title: '',
@@ -7,15 +11,34 @@ window.Note = Backbone.Model.extend({
 		mtime: 0
 	},
 	sync: function(method, model, options){
-		Backbone.serverSync(method, model, options);
-		return Backbone.localSync(method, model, options);
+		model.set({
+			mtime: time()
+		});
+
+		if (navigator.onLine) {
+			Backbone.localSync(method, model, {success: function(){}});
+			Backbone.serverSync(method, model, options);
+		} else
+			Backbone.localSync(method, model, options);
 	}
 });
 
 window.Notes = Backbone.Collection.extend({
 	model: Note,
-	localStorage: new Store("notes"),
-	url: 'notes.php'
+	localStorage: new Store('notes'),
+	url: 'notes.php',
+	sync: function(method, model, options){
+		if (navigator.onLine) {
+			var success = options.success;
+			options.success = function(resp, status, xhr){
+				success(resp, status, xhr);
+				model.localStorage.data = {};
+				model.localStorage.update(resp);
+			};
+			Backbone.serverSync(method, model, options);
+		} else
+			Backbone.localSync(method, model, options);
+	}
 });
 
 window.NoteView = Backbone.View.extend({
@@ -53,18 +76,23 @@ window.NoteForm = Backbone.View.extend({
 	},
 	submit: function(e){
 		e.preventDefault();
+
 		var data = {
 			title: this.$('[name=title]').val(),
 			body: this.$('[name=body]').val()
 		};
+
 		if (this.model.isNew())
 			this.app.notes.create(data);
 		else
 			this.model.save(data);
-	},
-	destroy: function(){
-		this.model.destroy();
+
 		this.clear();
+	},
+	destroy: function(e){
+		e.preventDefault();
+		e.stopPropagation();
+		this.model.destroy();
 	},
 	clear: function(){
 		this.model = new Note;
@@ -78,10 +106,12 @@ window.NoteForm = Backbone.View.extend({
 });
 
 window.NotesApp = Backbone.View.extend({
+	offlineFrom: 0,
 	events: {
 		'click .create': 'create',
 		'click .push': 'push',
 		'click .pull': 'pull',
+		'click .reset': 'reset',
 	},
 	initialize: function(){
 		this.list = this.$('#notesList');
@@ -99,7 +129,7 @@ window.NotesApp = Backbone.View.extend({
 		this.notes.bind('add', this.append, this);
 		this.notes.bind('reset', this.render, this);
 		this.notes.fetch();
-
+		
 		this.form = new NoteForm({
 			app: this,
 			el: this.$('#addNote'),
@@ -108,9 +138,12 @@ window.NotesApp = Backbone.View.extend({
 	},
 	online: function(){
 		this.$('#status').html('online');
+		if (this.offlineFrom)
+			this.push();
 	},
 	offline: function(){
 		this.$('#status').html('offline');
+		this.offlineFrom = time();
 	},
 	create: function(e){
 		e.preventDefault();
@@ -118,10 +151,19 @@ window.NotesApp = Backbone.View.extend({
 		this.form.render();
 	},
 	push: function(e){
-		e.preventDefault();
+		e && e.preventDefault();
+		Backbone.serverSync('update', this.notes);
 	},
 	pull: function(e){
 		e.preventDefault();
+		this.notes.fetch();
+	},
+	reset: function(e){
+		e.preventDefault();
+		console.log(localStorage['notes']);
+		this.notes.localStorage.data = {};
+		this.notes.localStorage.save();
+		console.log(localStorage['notes']);
 	},
 	append: function(item){
 		var view = new NoteView({
