@@ -7,13 +7,31 @@ window.Note = Backbone.Model.extend({
 		title: '',
 		body: '',
 		deleted: 0,
-		synced: 0,
 		mtime: 0
 	},
+	destroy: function(options){
+		options || (options = {});
+
+		if (!this.isNew()) {
+			this.save({
+				title: '',
+				body: '',
+				deleted: 1
+			});
+		}
+
+		this.trigger('destroy', this, this.collection, options);
+
+        if (!this.isNew() && options.success) {
+        	options.success(this, this);
+        }
+	},
 	sync: function(method, model, options){
-		model.set({
-			mtime: time()
-		});
+		if (method != 'read') {
+			model.set({
+				mtime: time()
+			});
+		}
 
 		if (navigator.onLine) {
 			Backbone.localSync(method, model, {success: function(){}});
@@ -32,7 +50,6 @@ window.Notes = Backbone.Collection.extend({
 			var success = options.success;
 			options.success = function(resp, status, xhr){
 				success(resp, status, xhr);
-				model.localStorage.data = {};
 				model.localStorage.update(resp);
 			};
 			Backbone.serverSync(method, model, options);
@@ -176,7 +193,8 @@ window.NotesApp = Backbone.View.extend({
 		this.list.empty();
 
 		this.notes.each(function(item){
-			this.append(item);
+			if (item.get('deleted') === 0)
+				this.append(item);
 		}, this);
 
 		return this;

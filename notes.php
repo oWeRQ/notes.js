@@ -10,6 +10,8 @@ function guid() {
 	return $uuid;
 }
 
+header('Cache-Control: no-store, no-cache, must-revalidate');
+
 $file = 'notes.json';
 $data = (array)json_decode(file_get_contents($file), true);
 
@@ -23,7 +25,6 @@ switch ($_SERVER['REQUEST_METHOD']) {
 		if ($id) {
 			$data[$id] = $_POST;
 		} else {
-			$data = array();
 			foreach ($_POST as $item)
 				$data[$item['id']] = $item;
 		}
