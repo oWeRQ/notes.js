@@ -70,8 +70,7 @@ window.NoteView = Backbone.View.extend({
 		this.model.bind('destroy', this.remove, this);
 	},
 	edit: function(){
-		this.app.form.model = this.model;
-		this.app.form.render();
+		this.app.form.modify(this.model);
 	},
 	render: function(){
 		$(this.el).text(this.model.get('title'));
@@ -85,35 +84,44 @@ window.NoteForm = Backbone.View.extend({
 	events: {
 		'submit': 'submit',
 		'click .destroy': 'destroy',
+		'click .close': 'close',
 	},
 	initialize: function(opt){
 		this.app = opt.app;
 		this.model.bind('change', this.render, this);
 		this.model.bind('destroy', this.clear, this);
 	},
+	modify: function(item){
+		this.model = item;
+		this.render();
+		this.el.show();
+	},
 	submit: function(e){
 		e.preventDefault();
 
-		var data = {
+		this.model.set({
 			title: this.$('[name=title]').val(),
 			body: this.$('[name=body]').val()
-		};
+		});
 
 		if (this.model.isNew())
-			this.app.notes.create(data);
-		else
-			this.model.save(data);
+			this.app.notes.add(this.model);
 
-		this.clear();
+		this.model.save();
+
+		this.close();
 	},
 	destroy: function(e){
 		e.preventDefault();
 		e.stopPropagation();
-		this.model.destroy();
+		if (confirm('Delete?')) {
+			this.model.destroy();
+			this.close();
+		}
 	},
-	clear: function(){
-		this.model = new Note;
-		this.render();
+	close: function(e){
+		e && e.preventDefault();
+		this.el.hide();
 	},
 	render: function(){
 		this.$('[name=title]').val(this.model.get('title'));
@@ -154,18 +162,17 @@ window.NotesApp = Backbone.View.extend({
 		});
 	},
 	online: function(){
-		this.$('#status').html('online');
+		this.$('#status').attr('class', 'online').html('online');
 		if (this.offlineFrom)
 			this.push();
 	},
 	offline: function(){
-		this.$('#status').html('offline');
+		this.$('#status').attr('class', 'offline').html('offline');
 		this.offlineFrom = time();
 	},
 	create: function(e){
 		e.preventDefault();
-		this.form.model = new Note;
-		this.form.render();
+		this.form.modify(new Note);
 	},
 	push: function(e){
 		e && e.preventDefault();

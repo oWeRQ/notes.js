@@ -2,6 +2,7 @@ CACHE MANIFEST
 
 CACHE:
 index.html
+css/styles.css
 js/jquery.min.js
 js/underscore-min.js
 js/backbone-min.js
