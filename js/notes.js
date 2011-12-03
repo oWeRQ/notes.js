@@ -1,6 +1,11 @@
-function time() {
-	return Math.round(new Date().getTime() / 1000);
-}
+window.applicationCache.addEventListener('updateready', function(){
+	window.applicationCache.swapCache();
+	if (confirm('A new version is available. Load it?')) {
+		window.location.reload();
+	}
+}, false);
+
+window.applicationCache.update();
 
 window.Note = Backbone.Model.extend({
 	defaults: {
@@ -26,10 +31,13 @@ window.Note = Backbone.Model.extend({
         	options.success(this, this);
         }
 	},
+	push: function(){
+		Backbone.serverSync('update', this);
+	},
 	sync: function(method, model, options){
 		if (method != 'read') {
 			model.set({
-				mtime: time()
+				mtime: new Date().getTime()
 			});
 		}
 
@@ -51,6 +59,11 @@ window.Notes = Backbone.Collection.extend({
 			options.success = function(resp, status, xhr){
 				success(resp, status, xhr);
 				model.localStorage.update(resp);
+				
+				var serverIds = _.keys(model._byId);
+				var localIds = _.keys(model.localStorage.data);
+				var diffIds = _.difference(localIds, serverIds);
+				console.log('not synced:', diffIds);
 			};
 			Backbone.serverSync(method, model, options);
 		} else
@@ -61,6 +74,7 @@ window.Notes = Backbone.Collection.extend({
 window.NoteView = Backbone.View.extend({
 	app: null,
 	tagName: 'li',
+	template: _.template('<%=title%> <span class="mtime"><%=mtime%></span>'),
 	events: {
 		'click': 'edit'
 	},
@@ -73,7 +87,10 @@ window.NoteView = Backbone.View.extend({
 		this.app.form.modify(this.model);
 	},
 	render: function(){
-		$(this.el).text(this.model.get('title'));
+		$(this.el).html(this.template({
+			title: this.model.get('title'),
+			mtime: new XDate(this.model.get('mtime')).toString('d MMM, H:mm')
+		}));
 		return this;
 	}
 });
@@ -164,19 +181,19 @@ window.NotesApp = Backbone.View.extend({
 	online: function(){
 		this.$('#status').attr('class', 'online').html('online');
 		if (this.offlineFrom)
-			this.push();
+			this.notes.push();
 	},
 	offline: function(){
 		this.$('#status').attr('class', 'offline').html('offline');
-		this.offlineFrom = time();
+		this.offlineFrom = new Date().getTime();
 	},
 	create: function(e){
 		e.preventDefault();
 		this.form.modify(new Note);
 	},
 	push: function(e){
-		e && e.preventDefault();
-		Backbone.serverSync('update', this.notes);
+		e.preventDefault();
+		this.notes.push();
 	},
 	pull: function(e){
 		e.preventDefault();

@@ -10,7 +10,8 @@ function guid() {
 	return $uuid;
 }
 
-header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Cache-Control: no-cache, must-revalidate');
+header('Content-type: application/json');
 
 $file = 'notes.json';
 $data = (array)json_decode(file_get_contents($file), true);

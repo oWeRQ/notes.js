@@ -1,0 +1,95 @@
+body {
+	position: relative;
+	margin: 30px auto;
+	padding: 0 10px;
+	width: 300px;
+	font: 13px sans-serif;
+}
+a {
+	color: #369;
+}
+
+#status {
+	position: absolute;
+	left: 10px;
+	top: -30px;
+	padding: 1px 5px;
+	color: white;
+	border-radius: 0 0 3px 3px;
+}
+#status.online {
+	background: #090;
+}
+#status.offline {
+	background: #c33;
+}
+
+#addNote {
+	display: none;
+	position: absolute;
+	top: -5px;
+	left: 5px;
+	padding: 10px;
+	width: 290px;
+	background: #f6f6f6;
+	border: 1px solid #ccc;
+	border-radius: 3px;
+}
+#addNote .close {
+	float: right;
+	margin: -8px;
+	padding: 0 5px;
+	font-size: 16px;
+	text-decoration: none;
+	color: red;
+}
+#addNote .destroy {
+	float: right;
+}
+#addNote input[type=text],
+#addNote textarea {
+	margin-bottom: 8px;
+	width: 284px;
+}
+
+#notesList {
+	list-style: none;
+	padding-left: 0;
+}
+#notesList li {
+	cursor: pointer;
+	margin: 6px 0;
+	padding: 3px 5px;
+	background: #f6f6f6;
+	border: 1px solid #e6e6e6;
+	border-radius: 3px;
+}
+#notesList li:hover {
+	border-color: #ccc;
+}
+#notesList .mtime {
+	float: right;
+	margin-top: 2px;
+	font-size: 11px;
+	color: #999;
+}
+
+#notesActions {
+	list-style: none;
+	padding-left: 4px;
+	background: #e6e6e6;
+	border-radius: 3px;
+}
+#notesActions li {
+	display: inline-block;
+	margin-left: -4px;
+	border-left: 1px solid #ccc;
+}
+#notesActions li:first-child {
+	border-left: none;
+}
+#notesActions a {
+	display: block;
+	padding: 3px 5px;
+	text-decoration: none;
+}
