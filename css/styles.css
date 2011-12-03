@@ -67,6 +67,10 @@ a {
 #notesList li:hover {
 	border-color: #ccc;
 }
+#notesList i {
+	font-size: 11px;
+	color: #999;
+}
 #notesList .mtime {
 	float: right;
 	margin-top: 2px;

@@ -14,6 +14,11 @@ window.Note = Backbone.Model.extend({
 		deleted: 0,
 		mtime: 0
 	},
+	updateMTime: function(){
+		this.set({
+			mtime: new Date().getTime()
+		});
+	},
 	destroy: function(options){
 		options || (options = {});
 
@@ -31,21 +36,11 @@ window.Note = Backbone.Model.extend({
         	options.success(this, this);
         }
 	},
-	push: function(){
-		Backbone.serverSync('update', this);
-	},
 	sync: function(method, model, options){
-		if (method != 'read') {
-			model.set({
-				mtime: new Date().getTime()
-			});
-		}
+		if (method != 'read')
+			model.updateMTime();
 
-		if (navigator.onLine) {
-			Backbone.localSync(method, model, {success: function(){}});
-			Backbone.serverSync(method, model, options);
-		} else
-			Backbone.localSync(method, model, options);
+		Backbone.localSync(method, model, options);
 	}
 });
 
@@ -53,28 +48,43 @@ window.Notes = Backbone.Collection.extend({
 	model: Note,
 	localStorage: new Store('notes'),
 	url: 'notes.php',
-	sync: function(method, model, options){
-		if (navigator.onLine) {
-			var success = options.success;
-			options.success = function(resp, status, xhr){
-				success(resp, status, xhr);
-				model.localStorage.update(resp);
+	serverSync: function(){
+		var collection = this;
+		Backbone.serverSync('read', this, {
+			success: function(resp, status, xhr) {
+				var serverIds = _.pluck(resp, 'id');
+				var localIds = _.pluck(collection.models, 'id');
+				var notSyncIds = _.difference(localIds, serverIds);
 				
-				var serverIds = _.keys(model._byId);
-				var localIds = _.keys(model.localStorage.data);
-				var diffIds = _.difference(localIds, serverIds);
-				console.log('not synced:', diffIds);
-			};
-			Backbone.serverSync(method, model, options);
-		} else
-			Backbone.localSync(method, model, options);
+				_.each(resp, function(server_note){
+					var note = collection.get(server_note.id);
+					if (note) {
+						if (note.attributes.mtime == server_note.mtime) {
+							//NOP
+						} else if (note.attributes.mtime < server_note.mtime) {
+							note.save(server_note);
+						} else {
+							notSyncIds.push(server_note.id);
+						}
+					} else {
+						if (server_note.deleted == 0)
+							collection.create(server_note);
+					}
+				});
+
+				_.each(notSyncIds, function(id){
+					var note = collection.get(id);
+					Backbone.serverSync('update', note);
+				});
+			}
+		});
 	}
 });
 
 window.NoteView = Backbone.View.extend({
 	app: null,
 	tagName: 'li',
-	template: _.template('<%=title%> <span class="mtime"><%=mtime%></span>'),
+	template: _.template('<%=title?title:"<i>empty</i>"%> <span class="mtime"><%=mtime%></span>'),
 	events: {
 		'click': 'edit'
 	},
@@ -97,16 +107,17 @@ window.NoteView = Backbone.View.extend({
 
 window.NoteForm = Backbone.View.extend({
 	app: null,
-	model: null,
 	events: {
 		'submit': 'submit',
-		'click .destroy': 'destroy',
+		'click .delete': 'delete',
 		'click .close': 'close',
 	},
 	initialize: function(opt){
 		this.app = opt.app;
+		this.title = this.$('[name=title]');
+		this.body = this.$('[name=body]');
 		this.model.bind('change', this.render, this);
-		this.model.bind('destroy', this.clear, this);
+		this.model.bind('destroy', this.close, this);
 	},
 	modify: function(item){
 		this.model = item;
@@ -117,8 +128,8 @@ window.NoteForm = Backbone.View.extend({
 		e.preventDefault();
 
 		this.model.set({
-			title: this.$('[name=title]').val(),
-			body: this.$('[name=body]').val()
+			title: this.title.val(),
+			body: this.body.val()
 		});
 
 		if (this.model.isNew())
@@ -128,35 +139,36 @@ window.NoteForm = Backbone.View.extend({
 
 		this.close();
 	},
-	destroy: function(e){
+	delete: function(e){
 		e.preventDefault();
 		e.stopPropagation();
-		if (confirm('Delete?')) {
+		if (confirm('Delete?'))
 			this.model.destroy();
-			this.close();
-		}
 	},
 	close: function(e){
 		e && e.preventDefault();
 		this.el.hide();
 	},
 	render: function(){
-		this.$('[name=title]').val(this.model.get('title'));
-		this.$('[name=body]').val(this.model.get('body'));
+		this.title.val(this.model.get('title'));
+		this.body.val(this.model.get('body'));
 		return this;
 	}
 });
 
 window.NotesApp = Backbone.View.extend({
-	offlineFrom: 0,
 	events: {
 		'click .create': 'create',
-		'click .push': 'push',
-		'click .pull': 'pull',
+		'click .sync': 'sync',
 		'click .reset': 'reset',
 	},
 	initialize: function(){
 		this.list = this.$('#notesList');
+
+		this.notes = new Notes;
+		this.notes.bind('add', this.append, this);
+		this.notes.bind('reset', this.render, this);
+		this.notes.fetch();
 
 		_.bindAll(this, 'online', 'offline');
 		window.addEventListener('online', this.online);
@@ -167,11 +179,6 @@ window.NotesApp = Backbone.View.extend({
 		else
 			this.offline();
 
-		this.notes = new Notes;
-		this.notes.bind('add', this.append, this);
-		this.notes.bind('reset', this.render, this);
-		this.notes.fetch();
-		
 		this.form = new NoteForm({
 			app: this,
 			el: this.$('#addNote'),
@@ -180,33 +187,31 @@ window.NotesApp = Backbone.View.extend({
 	},
 	online: function(){
 		this.$('#status').attr('class', 'online').html('online');
-		if (this.offlineFrom)
-			this.notes.push();
+		this.notes.serverSync();
 	},
 	offline: function(){
 		this.$('#status').attr('class', 'offline').html('offline');
-		this.offlineFrom = new Date().getTime();
 	},
 	create: function(e){
 		e.preventDefault();
 		this.form.modify(new Note);
 	},
-	push: function(e){
+	sync: function(e){
 		e.preventDefault();
-		this.notes.push();
-	},
-	pull: function(e){
-		e.preventDefault();
-		this.notes.fetch();
+		this.notes.serverSync();
 	},
 	reset: function(e){
 		e.preventDefault();
 		console.log(localStorage['notes']);
 		this.notes.localStorage.data = {};
 		this.notes.localStorage.save();
+		this.notes.fetch();
 		console.log(localStorage['notes']);
 	},
 	append: function(item){
+		if (item.get('deleted') == 1)
+			return;
+		
 		var view = new NoteView({
 			app: this,
 			model: item
@@ -217,8 +222,7 @@ window.NotesApp = Backbone.View.extend({
 		this.list.empty();
 
 		this.notes.each(function(item){
-			if (item.get('deleted') === 0)
-				this.append(item);
+			this.append(item);
 		}, this);
 
 		return this;
