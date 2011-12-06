@@ -5,8 +5,6 @@ window.applicationCache.addEventListener('updateready', function(){
 	}
 }, false);
 
-window.applicationCache.update();
-
 window.Note = Backbone.Model.extend({
 	defaults: {
 		title: '',
@@ -14,14 +12,17 @@ window.Note = Backbone.Model.extend({
 		deleted: 0,
 		mtime: 0
 	},
+	initialize: function(){
+		this.bind('change', this.updateMTime, this);
+	},
 	updateMTime: function(){
 		this.set({
 			mtime: new Date().getTime()
+		}, {
+			silent: true
 		});
 	},
-	destroy: function(options){
-		options || (options = {});
-
+	delete: function(){
 		if (!this.isNew()) {
 			this.save({
 				title: '',
@@ -29,18 +30,18 @@ window.Note = Backbone.Model.extend({
 				deleted: 1
 			});
 		}
-
-		this.trigger('destroy', this, this.collection, options);
-
-        if (!this.isNew() && options.success) {
-        	options.success(this, this);
-        }
+		this.trigger('delete', this, this.collection);
 	},
 	sync: function(method, model, options){
-		if (method != 'read')
-			model.updateMTime();
-
-		Backbone.localSync(method, model, options);
+		if (!options.fromServer && (method == 'create' || method == 'update')) {
+			var success = options.success;
+			options.success = function(resp, status, xhr){
+				success(resp, status, xhr);
+				if (navigator.onLine)
+					Backbone.serverSync('update', model);			
+			};
+		}
+		Backbone.sync(method, model, options);
 	}
 });
 
@@ -59,16 +60,13 @@ window.Notes = Backbone.Collection.extend({
 				_.each(resp, function(server_note){
 					var note = collection.get(server_note.id);
 					if (note) {
-						if (note.attributes.mtime == server_note.mtime) {
-							//NOP
-						} else if (note.attributes.mtime < server_note.mtime) {
-							note.save(server_note);
-						} else {
+						if (note.attributes.mtime < server_note.mtime)
+							note.save(server_note, {silent: true, fromServer: true});
+						else if (note.attributes.mtime > server_note.mtime)
 							notSyncIds.push(server_note.id);
-						}
 					} else {
 						if (server_note.deleted == 0)
-							collection.create(server_note);
+							collection.create(server_note, {fromServer: true});
 					}
 				});
 
@@ -91,7 +89,7 @@ window.NoteView = Backbone.View.extend({
 	initialize: function(opt){
 		this.app = opt.app;
 		this.model.bind('change', this.render, this);
-		this.model.bind('destroy', this.remove, this);
+		this.model.bind('delete', this.remove, this);
 	},
 	edit: function(){
 		this.app.form.modify(this.model);
@@ -116,26 +114,27 @@ window.NoteForm = Backbone.View.extend({
 		this.app = opt.app;
 		this.title = this.$('[name=title]');
 		this.body = this.$('[name=body]');
-		this.model.bind('change', this.render, this);
-		this.model.bind('destroy', this.close, this);
 	},
 	modify: function(item){
 		this.model = item;
+		this.model.bind('delete', this.close, this);
 		this.render();
 		this.el.show();
 	},
 	submit: function(e){
 		e.preventDefault();
 
-		this.model.set({
+		var data = {
 			title: this.title.val(),
 			body: this.body.val()
-		});
+		};
+
+		this.model.set(data);
 
 		if (this.model.isNew())
-			this.app.notes.add(this.model);
-
-		this.model.save();
+			this.app.notes.create(this.model);
+		else
+			this.model.save();
 
 		this.close();
 	},
@@ -143,11 +142,11 @@ window.NoteForm = Backbone.View.extend({
 		e.preventDefault();
 		e.stopPropagation();
 		if (confirm('Delete?'))
-			this.model.destroy();
+			this.model.delete();
 	},
-	close: function(e){
-		e && e.preventDefault();
+	close: function(){
 		this.el.hide();
+		return false;
 	},
 	render: function(){
 		this.title.val(this.model.get('title'));
@@ -206,7 +205,6 @@ window.NotesApp = Backbone.View.extend({
 		this.notes.localStorage.data = {};
 		this.notes.localStorage.save();
 		this.notes.fetch();
-		console.log(localStorage['notes']);
 	},
 	append: function(item){
 		if (item.get('deleted') == 1)
