@@ -52,7 +52,11 @@ window.Notes = Backbone.Collection.extend({
 	serverSync: function(){
 		var collection = this;
 		Backbone.serverSync('read', this, {
+			ifModified: true,
 			success: function(resp, status, xhr) {
+				if (status == 'notmodified')
+					return;
+
 				var serverIds = _.pluck(resp, 'id');
 				var localIds = _.pluck(collection.models, 'id');
 				var notSyncIds = _.difference(localIds, serverIds);
@@ -156,6 +160,7 @@ window.NoteForm = Backbone.View.extend({
 });
 
 window.NotesApp = Backbone.View.extend({
+	syncInterval: null,
 	events: {
 		'click .create': 'create',
 		'click .sync': 'sync',
@@ -169,7 +174,7 @@ window.NotesApp = Backbone.View.extend({
 		this.notes.bind('reset', this.render, this);
 		this.notes.fetch();
 
-		_.bindAll(this, 'online', 'offline');
+		_.bindAll(this, 'online', 'offline', 'sync');
 		window.addEventListener('online', this.online);
 		window.addEventListener('offline', this.offline);
 
@@ -187,24 +192,26 @@ window.NotesApp = Backbone.View.extend({
 	online: function(){
 		this.$('#status').attr('class', 'online').html('online');
 		this.notes.serverSync();
+		this.syncInterval = setInterval(this.sync, 600000);
 	},
 	offline: function(){
 		this.$('#status').attr('class', 'offline').html('offline');
+		clearInterval(this.syncInterval);
 	},
 	create: function(e){
 		e.preventDefault();
 		this.form.modify(new Note);
 	},
-	sync: function(e){
-		e.preventDefault();
+	sync: function(){
 		this.notes.serverSync();
+		return false;
 	},
-	reset: function(e){
-		e.preventDefault();
+	reset: function(){
 		console.log(localStorage['notes']);
 		this.notes.localStorage.data = {};
 		this.notes.localStorage.save();
 		this.notes.fetch();
+		return false;
 	},
 	append: function(item){
 		if (item.get('deleted') == 1)

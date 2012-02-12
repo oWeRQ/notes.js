@@ -10,10 +10,21 @@ function guid() {
 	return $uuid;
 }
 
-header('Cache-Control: no-cache, must-revalidate');
+$file = 'notes.json';
+
+$timestamp = filemtime($file);
+$modified = substr(gmdate('r', $timestamp), 0, -5).'GMT';
+$if_modified_since = @$_SERVER['HTTP_IF_MODIFIED_SINCE'];
+
+if ($modified == $if_modified_since) {
+	header("HTTP/1.1 304 Not Modified");
+	exit;
+}
+header("Last-Modified: $modified");
+header("Expires: $modified");
+header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Content-type: application/json');
 
-$file = 'notes.json';
 $data = (array)json_decode(file_get_contents($file), true);
 
 $id = trim($_SERVER['PATH_INFO'], '/');
